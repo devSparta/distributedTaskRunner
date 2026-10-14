@@ -23,12 +23,12 @@ type TaskState struct {
 
 type TaskManager struct {
 	mu    sync.RWMutex
-	tasks map[int]TaskState
+	tasks map[int64]TaskState
 }
 
 func NewTaskManager() *TaskManager {
 	return &TaskManager{
-		tasks: make(map[int]TaskState),
+		tasks: make(map[int64]TaskState),
 	}
 }
 
@@ -51,7 +51,7 @@ func (m *TaskManager) Add(task Task) error {
 	return nil
 }
 
-func (m *TaskManager) Start(id int) error {
+func (m *TaskManager) Start(id int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -100,7 +100,7 @@ func (m *TaskManager) Finish(result Result) error {
 	return nil
 }
 
-func (m *TaskManager) Get(id int) (TaskState, bool) {
+func (m *TaskManager) Get(id int64) (TaskState, bool) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 

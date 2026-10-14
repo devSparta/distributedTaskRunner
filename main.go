@@ -9,12 +9,12 @@ import (
 )
 
 type Task struct {
-	ID  int
+	ID  int64
 	URL string
 }
 
 type Result struct {
-	TaskID   int
+	TaskID   int64
 	WorkerID int
 	URL      string
 	Status   int
@@ -90,7 +90,7 @@ func processResults(results <-chan Result, m *TaskManager) {
 	}
 }
 
-func main() {
+func runLocalDemo() {
 	tasks := []Task{
 		{ID: 1, URL: "https://yandex.ru"},
 		{ID: 2, URL: "https://mail.ru"},

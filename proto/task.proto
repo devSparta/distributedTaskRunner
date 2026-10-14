@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package taskrunner;
+
+option go_package = "github.com/devSparta/distributedTaskRunner/proto;taskrunnerpb";
+
+message TaskResult {
+  int32 http_status = 1;
+  int64 duration_ms = 2;
+  string error_message = 3;
+}
+
+message SubmitTaskRequest {
+  string url = 1;
+}
+
+message SubmitTaskResponse {
+  int64 task_id = 1;
+  string status = 2;
+}
+
+message GetTaskRequest {
+  int64 task_id = 1;
+}
+
+message GetTaskResponse {
+  int64 task_id = 1;
+  string url = 2;
+  string status = 3;
+  TaskResult result = 4;
+}
+
+message AcquireTaskRequest {
+  string worker_id = 1;
+}
+
+message AcquireTaskResponse {
+  int64 task_id = 1;
+  string url = 2;
+}
+
+message ReportTaskResultRequest {
+  int64 task_id = 1;
+  string worker_id = 2;
+  TaskResult result = 4;
+}
+
+message ReportTaskResultResponse {}
+
+service TaskService {
+  rpc SubmitTask (SubmitTaskRequest) returns (SubmitTaskResponse);
+  rpc GetTask (GetTaskRequest) returns (GetTaskResponse);
+  rpc AcquireTask (AcquireTaskRequest) returns (AcquireTaskResponse);
+  rpc ReportTask (ReportTaskResultRequest) returns (ReportTaskResultResponse);
+}
+
