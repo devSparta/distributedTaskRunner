@@ -12,17 +12,39 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type TaskGRPCServer struct {
-	pb.UnimplementedTaskServiceServer
-	manager *t.TaskManager
-	queue   *TaskQueue
-	nextId  atomic.Int64
+func taskErrorToGRPC(err error) error {
+	switch {
+	case errors.Is(err, t.ErrTaskNotFound):
+		return status.Error(codes.NotFound, err.Error())
+
+	case errors.Is(err, t.ErrTaskAlreadyExists):
+		return status.Error(codes.AlreadyExists, err.Error())
+
+	case errors.Is(err, t.ErrInvalidState),
+		errors.Is(err, t.ErrWrongWorker),
+		errors.Is(err, t.ErrStaleAttempt),
+		errors.Is(err, t.ErrResultConflict):
+
+		return status.Error(codes.FailedPrecondition, err.Error())
+
+	default:
+		return status.Error(codes.Internal, err.Error())
+	}
 }
 
-func NewTaskGRPCServer(manager *t.TaskManager, queue *TaskQueue) *TaskGRPCServer {
+type TaskGRPCServer struct {
+	pb.UnimplementedTaskServiceServer
+	manager     *t.TaskManager
+	queue       *TaskQueue
+	nextId      atomic.Int64
+	shutdownCtx context.Context
+}
+
+func NewTaskGRPCServer(shutdownCtx context.Context, manager *t.TaskManager, queue *TaskQueue) *TaskGRPCServer {
 	return &TaskGRPCServer{
-		manager: manager,
-		queue:   queue,
+		manager:     manager,
+		queue:       queue,
+		shutdownCtx: shutdownCtx,
 	}
 }
 
@@ -41,7 +63,7 @@ func (s *TaskGRPCServer) SubmitTask(ctx context.Context, req *pb.SubmitTaskReque
 
 	err := s.manager.Add(*task)
 	if err != nil {
-		return nil, status.Errorf(codes.Internal, "failed to add task to task manager: %v", err)
+		return nil, taskErrorToGRPC(err)
 	}
 
 	err = s.queue.Add(ctx, *task)
@@ -110,14 +132,27 @@ func (s *TaskGRPCServer) AcquireTask(ctx context.Context, req *pb.AcquireTaskReq
 		return nil, status.Errorf(codes.InvalidArgument, "empty worker id")
 	}
 
-	task, err := s.queue.Get(ctx)
+	waitCtx, cancelWait := context.WithCancel(ctx)
+	stop := context.AfterFunc(s.shutdownCtx, cancelWait)
+	defer stop()
+	defer cancelWait()
+
+	task, err := s.queue.Get(waitCtx)
+	if s.shutdownCtx.Err() != nil {
+		return nil, status.Error(codes.Unavailable, "server is shutting down")
+	}
+
 	if err != nil {
 		return nil, status.FromContextError(err).Err()
 	}
 
 	attemptId, err := s.manager.Assign(task.ID, workerId)
-	if err != nil || attemptId == 0 {
-		return nil, status.Errorf(codes.Internal, "failed to assign task %d: %v", task.ID, err)
+	if err != nil {
+		return nil, taskErrorToGRPC(err)
+	}
+
+	if attemptId <= 0 {
+		return nil, status.Error(codes.Internal, "invalid attempt ID")
 	}
 
 	resp := &pb.AcquireTaskResponse{
@@ -163,8 +198,7 @@ func (s *TaskGRPCServer) ReportTaskResult(ctx context.Context, req *pb.ReportTas
 	}
 
 	if err := s.manager.Finish(*result, workerId, attemptId); err != nil {
-		//добавить различие ошибок
-		return nil, status.Errorf(codes.Internal, "failed to finish task %d: %v", taskID, err)
+		return nil, taskErrorToGRPC(err)
 	}
 
 	return &pb.ReportTaskResultResponse{}, nil

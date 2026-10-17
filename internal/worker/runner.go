@@ -54,6 +54,7 @@ func (r *Runner) Run(ctx context.Context) error {
 }
 
 func (r *Runner) runWorker(ctx context.Context) {
+	serverUnavailable := false
 	for {
 		if ctx.Err() != nil {
 			return
@@ -65,14 +66,26 @@ func (r *Runner) runWorker(ctx context.Context) {
 		)
 
 		if err != nil {
-			log.Printf("acquire task error: %v", err)
+			if ctx.Err() != nil {
+				return
+			}
+
+			if !serverUnavailable {
+				log.Printf("server unavailable: %v", err)
+				serverUnavailable = true
+			}
 
 			select {
 			case <-ctx.Done():
 				return
-			case <-time.After(400 * time.Millisecond):
+			case <-time.After(2 * time.Second):
 				continue
 			}
+		}
+
+		if serverUnavailable {
+			log.Println("task acquisition restored")
+			serverUnavailable = false
 		}
 
 		start := time.Now()

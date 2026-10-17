@@ -25,10 +25,13 @@ func (m *TaskManager) Add(task Task) error {
 
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	_, ok := m.tasks[task.ID]
 
-	if ok {
-		return fmt.Errorf("task already exists: %v", task)
+	if _, ok := m.tasks[task.ID]; ok {
+		return fmt.Errorf(
+			"task %d: %w",
+			task.ID,
+			ErrTaskAlreadyExists,
+		)
 	}
 
 	m.tasks[task.ID] = state
@@ -36,27 +39,11 @@ func (m *TaskManager) Add(task Task) error {
 	return nil
 }
 
-func (m *TaskManager) Start(id int64) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	task, ok := m.tasks[id]
-	if !ok {
-		return fmt.Errorf("task does not exist: %v", id)
-	}
-
-	if task.Status != StatusPending {
-		return fmt.Errorf("task already started: %v", task)
-	}
-
-	task.Status = StatusRunning
-
-	m.tasks[id] = task
-
-	return nil
-}
-
-func (m *TaskManager) Finish(result Result, workerId string, attemptID int64) error {
+func (m *TaskManager) Finish(
+	result Result,
+	workerID string,
+	attemptID int64,
+) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -64,30 +51,38 @@ func (m *TaskManager) Finish(result Result, workerId string, attemptID int64) er
 
 	taskState, ok := m.tasks[id]
 	if !ok {
-		return fmt.Errorf("task state does not exist: %d", id)
+		return fmt.Errorf("task %d: %w", id, ErrTaskNotFound)
 	}
 
-	if taskState.AssignedWorkerID != workerId {
+	if taskState.AssignedWorkerID != workerID {
 		return fmt.Errorf(
-			"cannot finish task %d: assigned worker %q, got %q",
+			"cannot finish task %d: assigned worker %q, got %q: %w",
 			id,
 			taskState.AssignedWorkerID,
-			workerId,
+			workerID,
+			ErrWrongWorker,
 		)
 	}
 
 	if taskState.AttemptID != attemptID {
 		return fmt.Errorf(
-			"stale attempt for task %d: expected %d, got %d",
-			result.TaskID,
+			"task %d: expected attempt %d, got %d: %w",
+			id,
 			taskState.AttemptID,
 			attemptID,
+			ErrStaleAttempt,
 		)
 	}
 
-	if taskState.Status == StatusCompleted || taskState.Status == StatusFailed {
+	if taskState.Status == StatusCompleted ||
+		taskState.Status == StatusFailed {
+
 		if !taskState.HasResult {
-			return fmt.Errorf("task %d is finished but has no result", id)
+			return fmt.Errorf(
+				"task %d is finished but has no result: %w",
+				id,
+				ErrInvalidState,
+			)
 		}
 
 		old := taskState.Result
@@ -104,7 +99,11 @@ func (m *TaskManager) Finish(result Result, workerId string, attemptID int64) er
 			sameError
 
 		if !sameResult {
-			return fmt.Errorf("task %d already has a different result", id)
+			return fmt.Errorf(
+				"task %d already has a different result: %w",
+				id,
+				ErrResultConflict,
+			)
 		}
 
 		return nil
@@ -112,9 +111,10 @@ func (m *TaskManager) Finish(result Result, workerId string, attemptID int64) er
 
 	if taskState.Status != StatusRunning {
 		return fmt.Errorf(
-			"cannot finish task %d with status %s",
+			"cannot finish task %d with status %s: %w",
 			id,
 			taskState.Status,
+			ErrInvalidState,
 		)
 	}
 
@@ -149,36 +149,50 @@ func (m *TaskManager) Delete(id int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	_, ok := m.tasks[id]
+	state, ok := m.tasks[id]
 	if !ok {
-		return fmt.Errorf("task with id: %d does not exist", id)
+		return fmt.Errorf("task %d: %w", id, ErrTaskNotFound)
 	}
 
-	if m.tasks[id].Status != StatusPending {
-		return fmt.Errorf("cannot delete task with status: %v", m.tasks[id].Status)
+	if state.Status != StatusPending {
+		return fmt.Errorf(
+			"cannot delete task %d with status %s: %w",
+			id,
+			state.Status,
+			ErrInvalidState,
+		)
 	}
 
 	delete(m.tasks, id)
+
 	return nil
 }
 
-func (m *TaskManager) Assign(id int64, workerID string) (int64, error) {
+func (m *TaskManager) Assign(
+	id int64,
+	workerID string,
+) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	state, ok := m.tasks[id]
 	if !ok {
-		return 0, fmt.Errorf("task with id: %d does not exist", id)
+		return 0, fmt.Errorf("task %d: %w", id, ErrTaskNotFound)
 	}
 
 	if state.Status != StatusPending {
-		return 0, fmt.Errorf("cannot assign task %d with status %s", id, state.Status)
+		return 0, fmt.Errorf(
+			"cannot assign task %d with status %s: %w",
+			id,
+			state.Status,
+			ErrInvalidState,
+		)
 	}
 
 	state.AssignedWorkerID = workerID
 	state.Status = StatusRunning
 	state.AttemptID++
-	state.LeaseUntil = time.Now().Add(time.Second * 30)
+	state.LeaseUntil = time.Now().Add(30 * time.Second)
 
 	m.tasks[id] = state
 
@@ -190,25 +204,29 @@ func (m *TaskManager) GetExpiredTasks(now time.Time) []Task {
 	defer m.mu.RUnlock()
 
 	result := make([]Task, 0, len(m.tasks))
+
 	for _, state := range m.tasks {
-		if state.Status == StatusRunning {
-			if !state.LeaseUntil.After(now) {
-				result = append(result, state.Task)
-			}
+		if state.Status == StatusRunning &&
+			!state.LeaseUntil.After(now) {
+			result = append(result, state.Task)
 		}
 	}
 
 	return result
 }
 
-func (m *TaskManager) RecoverExpired(now time.Time, tryEnqueue func(Task) bool) int {
+func (m *TaskManager) RecoverExpired(
+	now time.Time,
+	tryEnqueue func(Task) bool,
+) int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	correctlyRecovered := 0
 
-	for i, state := range m.tasks {
-		if state.Status != StatusRunning || state.LeaseUntil.After(now) {
+	for id, state := range m.tasks {
+		if state.Status != StatusRunning ||
+			state.LeaseUntil.After(now) {
 			continue
 		}
 
@@ -217,8 +235,7 @@ func (m *TaskManager) RecoverExpired(now time.Time, tryEnqueue func(Task) bool) 
 			state.AssignedWorkerID = ""
 			state.LeaseUntil = time.Time{}
 
-			m.tasks[i] = state
-
+			m.tasks[id] = state
 			correctlyRecovered++
 		}
 	}

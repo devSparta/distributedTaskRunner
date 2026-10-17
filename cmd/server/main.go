@@ -20,48 +20,51 @@ import (
 func main() {
 	manager := t.NewTaskManager()
 
-	taskQueue := server.NewTaskQueue(100)
-	taskServer := server.NewTaskGRPCServer(manager, taskQueue)
+	ctx, stop := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer stop()
 
-	list, err := net.Listen("tcp", "127.0.0.1:50051")
+	taskQueue := server.NewTaskQueue(100)
+	taskServer := server.NewTaskGRPCServer(ctx, manager, taskQueue)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:50051")
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
 	grpcServer := grpc.NewServer()
 
-	healthServer := health.NewServer()
+	pb.RegisterTaskServiceServer(grpcServer, taskServer)
 
+	healthServer := health.NewServer()
 	healthServer.SetServingStatus(
 		"",
 		healthpb.HealthCheckResponse_SERVING,
 	)
-
 	healthpb.RegisterHealthServer(grpcServer, healthServer)
-
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer cancel()
-
-	pb.RegisterTaskServiceServer(grpcServer, taskServer)
-
-	go func() {
-		log.Printf("Starting grpc server at %v", list.Addr())
-		if err := grpcServer.Serve(list); err != nil {
-			log.Fatalf("failed to serve: %v", err)
-		}
-	}()
 
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 
+	recoveryDone := make(chan struct{})
+
 	go func() {
+		defer close(recoveryDone)
+
 		for {
 			select {
 			case <-ctx.Done():
 				return
 
 			case <-ticker.C:
-				recovered := manager.RecoverExpired(time.Now(), taskQueue.TryAdd)
+				recovered := manager.RecoverExpired(
+					time.Now(),
+					taskQueue.TryAdd,
+				)
+
 				if recovered > 0 {
 					log.Printf("Recovered expired tasks: %d", recovered)
 				}
@@ -69,8 +72,48 @@ func main() {
 		}
 	}()
 
+	serveDone := make(chan struct{})
+
+	go func() {
+		defer close(serveDone)
+
+		log.Printf("Starting gRPC server at %s", listener.Addr())
+
+		if err := grpcServer.Serve(listener); err != nil {
+			log.Printf("gRPC server stopped with error: %v", err)
+			stop()
+		}
+	}()
+
 	<-ctx.Done()
 
 	log.Println("Shutting down server...")
-	grpcServer.GracefulStop()
+
+	healthServer.Shutdown()
+
+	<-recoveryDone
+
+	gracefulDone := make(chan struct{})
+
+	go func() {
+		grpcServer.GracefulStop()
+		close(gracefulDone)
+	}()
+
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+
+	select {
+	case <-gracefulDone:
+		log.Println("gRPC server stopped gracefully")
+
+	case <-timer.C:
+		log.Println("Graceful shutdown timeout exceeded, forcing stop")
+		grpcServer.Stop()
+		<-gracefulDone
+	}
+
+	<-serveDone
+
+	log.Println("Server stopped")
 }
