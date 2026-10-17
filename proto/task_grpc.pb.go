@@ -19,7 +19,10 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	TaskService_SubmitTask_FullMethodName = "/taskrunner.TaskService/SubmitTask"
+	TaskService_SubmitTask_FullMethodName       = "/taskrunner.TaskService/SubmitTask"
+	TaskService_GetTask_FullMethodName          = "/taskrunner.TaskService/GetTask"
+	TaskService_AcquireTask_FullMethodName      = "/taskrunner.TaskService/AcquireTask"
+	TaskService_ReportTaskResult_FullMethodName = "/taskrunner.TaskService/ReportTaskResult"
 )
 
 // TaskServiceClient is the client API for TaskService service.
@@ -27,6 +30,9 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type TaskServiceClient interface {
 	SubmitTask(ctx context.Context, in *SubmitTaskRequest, opts ...grpc.CallOption) (*SubmitTaskResponse, error)
+	GetTask(ctx context.Context, in *GetTaskRequest, opts ...grpc.CallOption) (*GetTaskResponse, error)
+	AcquireTask(ctx context.Context, in *AcquireTaskRequest, opts ...grpc.CallOption) (*AcquireTaskResponse, error)
+	ReportTaskResult(ctx context.Context, in *ReportTaskResultRequest, opts ...grpc.CallOption) (*ReportTaskResultResponse, error)
 }
 
 type taskServiceClient struct {
@@ -47,11 +53,44 @@ func (c *taskServiceClient) SubmitTask(ctx context.Context, in *SubmitTaskReques
 	return out, nil
 }
 
+func (c *taskServiceClient) GetTask(ctx context.Context, in *GetTaskRequest, opts ...grpc.CallOption) (*GetTaskResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetTaskResponse)
+	err := c.cc.Invoke(ctx, TaskService_GetTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *taskServiceClient) AcquireTask(ctx context.Context, in *AcquireTaskRequest, opts ...grpc.CallOption) (*AcquireTaskResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AcquireTaskResponse)
+	err := c.cc.Invoke(ctx, TaskService_AcquireTask_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *taskServiceClient) ReportTaskResult(ctx context.Context, in *ReportTaskResultRequest, opts ...grpc.CallOption) (*ReportTaskResultResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReportTaskResultResponse)
+	err := c.cc.Invoke(ctx, TaskService_ReportTaskResult_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // TaskServiceServer is the server API for TaskService service.
 // All implementations must embed UnimplementedTaskServiceServer
 // for forward compatibility.
 type TaskServiceServer interface {
 	SubmitTask(context.Context, *SubmitTaskRequest) (*SubmitTaskResponse, error)
+	GetTask(context.Context, *GetTaskRequest) (*GetTaskResponse, error)
+	AcquireTask(context.Context, *AcquireTaskRequest) (*AcquireTaskResponse, error)
+	ReportTaskResult(context.Context, *ReportTaskResultRequest) (*ReportTaskResultResponse, error)
 	mustEmbedUnimplementedTaskServiceServer()
 }
 
@@ -64,6 +103,15 @@ type UnimplementedTaskServiceServer struct{}
 
 func (UnimplementedTaskServiceServer) SubmitTask(context.Context, *SubmitTaskRequest) (*SubmitTaskResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SubmitTask not implemented")
+}
+func (UnimplementedTaskServiceServer) GetTask(context.Context, *GetTaskRequest) (*GetTaskResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetTask not implemented")
+}
+func (UnimplementedTaskServiceServer) AcquireTask(context.Context, *AcquireTaskRequest) (*AcquireTaskResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method AcquireTask not implemented")
+}
+func (UnimplementedTaskServiceServer) ReportTaskResult(context.Context, *ReportTaskResultRequest) (*ReportTaskResultResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReportTaskResult not implemented")
 }
 func (UnimplementedTaskServiceServer) mustEmbedUnimplementedTaskServiceServer() {}
 func (UnimplementedTaskServiceServer) testEmbeddedByValue()                     {}
@@ -104,6 +152,60 @@ func _TaskService_SubmitTask_Handler(srv interface{}, ctx context.Context, dec f
 	return interceptor(ctx, in, info, handler)
 }
 
+func _TaskService_GetTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TaskServiceServer).GetTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TaskService_GetTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TaskServiceServer).GetTask(ctx, req.(*GetTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TaskService_AcquireTask_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AcquireTaskRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TaskServiceServer).AcquireTask(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TaskService_AcquireTask_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TaskServiceServer).AcquireTask(ctx, req.(*AcquireTaskRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _TaskService_ReportTaskResult_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReportTaskResultRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TaskServiceServer).ReportTaskResult(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: TaskService_ReportTaskResult_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TaskServiceServer).ReportTaskResult(ctx, req.(*ReportTaskResultRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // TaskService_ServiceDesc is the grpc.ServiceDesc for TaskService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -114,6 +216,18 @@ var TaskService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SubmitTask",
 			Handler:    _TaskService_SubmitTask_Handler,
+		},
+		{
+			MethodName: "GetTask",
+			Handler:    _TaskService_GetTask_Handler,
+		},
+		{
+			MethodName: "AcquireTask",
+			Handler:    _TaskService_AcquireTask_Handler,
+		},
+		{
+			MethodName: "ReportTaskResult",
+			Handler:    _TaskService_ReportTaskResult_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

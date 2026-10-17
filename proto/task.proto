@@ -42,7 +42,7 @@ message AcquireTaskResponse {
 message ReportTaskResultRequest {
   int64 task_id = 1;
   string worker_id = 2;
-  TaskResult result = 4;
+  TaskResult result = 3;
 }
 
 message ReportTaskResultResponse {}
@@ -51,6 +51,6 @@ service TaskService {
   rpc SubmitTask (SubmitTaskRequest) returns (SubmitTaskResponse);
   rpc GetTask (GetTaskRequest) returns (GetTaskResponse);
   rpc AcquireTask (AcquireTaskRequest) returns (AcquireTaskResponse);
-  rpc ReportTask (ReportTaskResultRequest) returns (ReportTaskResultResponse);
+  rpc ReportTaskResult (ReportTaskResultRequest) returns (ReportTaskResultResponse);
 }
 
