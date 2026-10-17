@@ -36,3 +36,13 @@ func (q *TaskQueue) Get(ctx context.Context) (t.Task, error) {
 		return t.Task{}, ctx.Err()
 	}
 }
+
+func (q *TaskQueue) TryAdd(task t.Task) bool {
+	select {
+	case q.tasks <- task:
+		return true
+
+	default:
+		return false
+	}
+}

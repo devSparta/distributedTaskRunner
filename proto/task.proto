@@ -37,12 +37,14 @@ message AcquireTaskRequest {
 message AcquireTaskResponse {
   int64 task_id = 1;
   string url = 2;
+  int64 attempt_id = 3;
 }
 
 message ReportTaskResultRequest {
   int64 task_id = 1;
   string worker_id = 2;
   TaskResult result = 3;
+  int64 attempt_id = 4;
 }
 
 message ReportTaskResultResponse {}

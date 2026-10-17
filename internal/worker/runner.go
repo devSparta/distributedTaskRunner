@@ -90,9 +90,10 @@ func (r *Runner) runWorker(ctx context.Context) {
 		result.DurationMs = time.Since(start).Milliseconds()
 
 		req := &pb.ReportTaskResultRequest{
-			TaskId:   task.TaskId,
-			WorkerId: r.workerID,
-			Result:   result,
+			TaskId:    task.TaskId,
+			WorkerId:  r.workerID,
+			Result:    result,
+			AttemptId: task.GetAttemptId(),
 		}
 
 		attempts := 3

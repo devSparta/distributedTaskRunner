@@ -115,13 +115,15 @@ func (s *TaskGRPCServer) AcquireTask(ctx context.Context, req *pb.AcquireTaskReq
 		return nil, status.FromContextError(err).Err()
 	}
 
-	if err = s.manager.Assign(task.ID, workerId); err != nil {
+	attemptId, err := s.manager.Assign(task.ID, workerId)
+	if err != nil || attemptId == 0 {
 		return nil, status.Errorf(codes.Internal, "failed to assign task %d: %v", task.ID, err)
 	}
 
 	resp := &pb.AcquireTaskResponse{
-		TaskId: task.ID,
-		Url:    task.URL,
+		TaskId:    task.ID,
+		Url:       task.URL,
+		AttemptId: attemptId,
 	}
 
 	return resp, nil
@@ -155,7 +157,12 @@ func (s *TaskGRPCServer) ReportTaskResult(ctx context.Context, req *pb.ReportTas
 		result.Err = errors.New(errToResult)
 	}
 
-	if err := s.manager.Finish(*result, workerId); err != nil {
+	attemptId := req.GetAttemptId()
+	if attemptId <= 0 {
+		return nil, status.Errorf(codes.InvalidArgument, "empty attempt id")
+	}
+
+	if err := s.manager.Finish(*result, workerId, attemptId); err != nil {
 		//добавить различие ошибок
 		return nil, status.Errorf(codes.Internal, "failed to finish task %d: %v", taskID, err)
 	}

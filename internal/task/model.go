@@ -1,6 +1,17 @@
 package task
 
-import "time"
+import (
+	"time"
+)
+
+type TaskStatus string
+
+const (
+	StatusPending   TaskStatus = "pending"
+	StatusRunning   TaskStatus = "running"
+	StatusCompleted TaskStatus = "completed"
+	StatusFailed    TaskStatus = "failed"
+)
 
 type Task struct {
 	ID  int64
@@ -14,4 +25,14 @@ type Result struct {
 	Status   int
 	Duration time.Duration
 	Err      error
+}
+
+type TaskState struct {
+	Task             Task
+	Status           TaskStatus
+	Result           Result
+	HasResult        bool
+	AssignedWorkerID string
+	LeaseUntil       time.Time
+	AttemptID        int64
 }

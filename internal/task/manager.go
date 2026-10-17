@@ -3,24 +3,8 @@ package task
 import (
 	"fmt"
 	"sync"
+	"time"
 )
-
-type TaskStatus string
-
-const (
-	StatusPending   TaskStatus = "pending"
-	StatusRunning   TaskStatus = "running"
-	StatusCompleted TaskStatus = "completed"
-	StatusFailed    TaskStatus = "failed"
-)
-
-type TaskState struct {
-	Task             Task
-	Status           TaskStatus
-	Result           Result
-	HasResult        bool
-	AssignedWorkerID string
-}
 
 type TaskManager struct {
 	mu    sync.RWMutex
@@ -72,7 +56,7 @@ func (m *TaskManager) Start(id int64) error {
 	return nil
 }
 
-func (m *TaskManager) Finish(result Result, workerId string) error {
+func (m *TaskManager) Finish(result Result, workerId string, attemptID int64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -80,15 +64,58 @@ func (m *TaskManager) Finish(result Result, workerId string) error {
 
 	taskState, ok := m.tasks[id]
 	if !ok {
-		return fmt.Errorf("task state does not exist: %v", id)
-	}
-
-	if taskState.Status != StatusRunning {
-		return fmt.Errorf("cannot finish task %d with status %s", id, taskState.Status)
+		return fmt.Errorf("task state does not exist: %d", id)
 	}
 
 	if taskState.AssignedWorkerID != workerId {
-		return fmt.Errorf("cannot finish task %d with wrong assigned worker %s", id, taskState.AssignedWorkerID)
+		return fmt.Errorf(
+			"cannot finish task %d: assigned worker %q, got %q",
+			id,
+			taskState.AssignedWorkerID,
+			workerId,
+		)
+	}
+
+	if taskState.AttemptID != attemptID {
+		return fmt.Errorf(
+			"stale attempt for task %d: expected %d, got %d",
+			result.TaskID,
+			taskState.AttemptID,
+			attemptID,
+		)
+	}
+
+	if taskState.Status == StatusCompleted || taskState.Status == StatusFailed {
+		if !taskState.HasResult {
+			return fmt.Errorf("task %d is finished but has no result", id)
+		}
+
+		old := taskState.Result
+
+		sameError := (old.Err == nil && result.Err == nil) ||
+			(old.Err != nil &&
+				result.Err != nil &&
+				old.Err.Error() == result.Err.Error())
+
+		sameResult := old.TaskID == result.TaskID &&
+			old.WorkerID == result.WorkerID &&
+			old.Status == result.Status &&
+			old.Duration == result.Duration &&
+			sameError
+
+		if !sameResult {
+			return fmt.Errorf("task %d already has a different result", id)
+		}
+
+		return nil
+	}
+
+	if taskState.Status != StatusRunning {
+		return fmt.Errorf(
+			"cannot finish task %d with status %s",
+			id,
+			taskState.Status,
+		)
 	}
 
 	if result.Err == nil {
@@ -135,23 +162,66 @@ func (m *TaskManager) Delete(id int64) error {
 	return nil
 }
 
-func (m *TaskManager) Assign(id int64, workerID string) error {
+func (m *TaskManager) Assign(id int64, workerID string) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	state, ok := m.tasks[id]
 	if !ok {
-		return fmt.Errorf("task with id: %d does not exist", id)
+		return 0, fmt.Errorf("task with id: %d does not exist", id)
 	}
 
 	if state.Status != StatusPending {
-		return fmt.Errorf("cannot assign task %d with status %s", id, state.Status)
+		return 0, fmt.Errorf("cannot assign task %d with status %s", id, state.Status)
 	}
 
 	state.AssignedWorkerID = workerID
 	state.Status = StatusRunning
+	state.AttemptID++
+	state.LeaseUntil = time.Now().Add(time.Second * 30)
 
 	m.tasks[id] = state
 
-	return nil
+	return state.AttemptID, nil
+}
+
+func (m *TaskManager) GetExpiredTasks(now time.Time) []Task {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	result := make([]Task, 0, len(m.tasks))
+	for _, state := range m.tasks {
+		if state.Status == StatusRunning {
+			if !state.LeaseUntil.After(now) {
+				result = append(result, state.Task)
+			}
+		}
+	}
+
+	return result
+}
+
+func (m *TaskManager) RecoverExpired(now time.Time, tryEnqueue func(Task) bool) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	correctlyRecovered := 0
+
+	for i, state := range m.tasks {
+		if state.Status != StatusRunning || state.LeaseUntil.After(now) {
+			continue
+		}
+
+		if tryEnqueue(state.Task) {
+			state.Status = StatusPending
+			state.AssignedWorkerID = ""
+			state.LeaseUntil = time.Time{}
+
+			m.tasks[i] = state
+
+			correctlyRecovered++
+		}
+	}
+
+	return correctlyRecovered
 }

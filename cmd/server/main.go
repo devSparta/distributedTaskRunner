@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/devSparta/distributedTaskRunner/internal/server"
 	t "github.com/devSparta/distributedTaskRunner/internal/task"
@@ -37,9 +39,8 @@ func main() {
 
 	healthpb.RegisterHealthServer(grpcServer, healthServer)
 
-	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(stop)
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
 
 	pb.RegisterTaskServiceServer(grpcServer, taskServer)
 
@@ -50,9 +51,26 @@ func main() {
 		}
 	}()
 
-	<-stop
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+
+			case <-ticker.C:
+				recovered := manager.RecoverExpired(time.Now(), taskQueue.TryAdd)
+				if recovered > 0 {
+					log.Printf("Recovered expired tasks: %d", recovered)
+				}
+			}
+		}
+	}()
+
+	<-ctx.Done()
 
 	log.Println("Shutting down server...")
 	grpcServer.GracefulStop()
-
 }

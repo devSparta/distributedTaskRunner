@@ -337,6 +337,7 @@ type AcquireTaskResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TaskId        int64                  `protobuf:"varint,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	Url           string                 `protobuf:"bytes,2,opt,name=url,proto3" json:"url,omitempty"`
+	AttemptId     int64                  `protobuf:"varint,3,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -385,11 +386,19 @@ func (x *AcquireTaskResponse) GetUrl() string {
 	return ""
 }
 
+func (x *AcquireTaskResponse) GetAttemptId() int64 {
+	if x != nil {
+		return x.AttemptId
+	}
+	return 0
+}
+
 type ReportTaskResultRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	TaskId        int64                  `protobuf:"varint,1,opt,name=task_id,json=taskId,proto3" json:"task_id,omitempty"`
 	WorkerId      string                 `protobuf:"bytes,2,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
 	Result        *TaskResult            `protobuf:"bytes,3,opt,name=result,proto3" json:"result,omitempty"`
+	AttemptId     int64                  `protobuf:"varint,4,opt,name=attempt_id,json=attemptId,proto3" json:"attempt_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -443,6 +452,13 @@ func (x *ReportTaskResultRequest) GetResult() *TaskResult {
 		return x.Result
 	}
 	return nil
+}
+
+func (x *ReportTaskResultRequest) GetAttemptId() int64 {
+	if x != nil {
+		return x.AttemptId
+	}
+	return 0
 }
 
 type ReportTaskResultResponse struct {
@@ -507,14 +523,18 @@ const file_proto_task_proto_rawDesc = "" +
 	"\x06status\x18\x03 \x01(\tR\x06status\x12.\n" +
 	"\x06result\x18\x04 \x01(\v2\x16.taskrunner.TaskResultR\x06result\"1\n" +
 	"\x12AcquireTaskRequest\x12\x1b\n" +
-	"\tworker_id\x18\x01 \x01(\tR\bworkerId\"@\n" +
+	"\tworker_id\x18\x01 \x01(\tR\bworkerId\"_\n" +
 	"\x13AcquireTaskResponse\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\x03R\x06taskId\x12\x10\n" +
-	"\x03url\x18\x02 \x01(\tR\x03url\"\x7f\n" +
+	"\x03url\x18\x02 \x01(\tR\x03url\x12\x1d\n" +
+	"\n" +
+	"attempt_id\x18\x03 \x01(\x03R\tattemptId\"\x9e\x01\n" +
 	"\x17ReportTaskResultRequest\x12\x17\n" +
 	"\atask_id\x18\x01 \x01(\x03R\x06taskId\x12\x1b\n" +
 	"\tworker_id\x18\x02 \x01(\tR\bworkerId\x12.\n" +
-	"\x06result\x18\x03 \x01(\v2\x16.taskrunner.TaskResultR\x06result\"\x1a\n" +
+	"\x06result\x18\x03 \x01(\v2\x16.taskrunner.TaskResultR\x06result\x12\x1d\n" +
+	"\n" +
+	"attempt_id\x18\x04 \x01(\x03R\tattemptId\"\x1a\n" +
 	"\x18ReportTaskResultResponse2\xcd\x02\n" +
 	"\vTaskService\x12K\n" +
 	"\n" +
